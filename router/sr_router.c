@@ -22,31 +22,31 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
-/*---------------------------------------------------------------------
- * Method: sr_init(void)
- * Scope:  Global
- *
- * Initialize the routing subsystem
- *
- *---------------------------------------------------------------------*/
+ /*---------------------------------------------------------------------
+  * Method: sr_init(void)
+  * Scope:  Global
+  *
+  * Initialize the routing subsystem
+  *
+  *---------------------------------------------------------------------*/
 
 void sr_init(struct sr_instance* sr)
 {
-    /* REQUIRES */
-    assert(sr);
+  /* REQUIRES */
+  assert(sr);
 
-    /* Initialize cache and cache cleanup thread */
-    sr_arpcache_init(&(sr->cache));
+  /* Initialize cache and cache cleanup thread */
+  sr_arpcache_init(&(sr->cache));
 
-    pthread_attr_init(&(sr->attr));
-    pthread_attr_setdetachstate(&(sr->attr), PTHREAD_CREATE_JOINABLE);
-    pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
-    pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
-    pthread_t thread;
+  pthread_attr_init(&(sr->attr));
+  pthread_attr_setdetachstate(&(sr->attr), PTHREAD_CREATE_JOINABLE);
+  pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
+  pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
+  pthread_t thread;
 
-    pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
-    
-    /* Add initialization code here! */
+  pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
+
+  /* Add initialization code here! */
 
 } /* -- sr_init -- */
 
@@ -67,16 +67,16 @@ void sr_init(struct sr_instance* sr)
  *---------------------------------------------------------------------*/
 
 void sr_handlepacket(struct sr_instance* sr,
-        uint8_t * packet/* lent */,
-        unsigned int len,
-        char* interface/* lent */)
+  uint8_t* packet/* lent */,
+  unsigned int len,
+  char* interface/* lent */)
 {
   /* REQUIRES */
   assert(sr);
   assert(packet);
   assert(interface);
 
-  printf("*** -> Received packet of length %d \n",len);
+  printf("*** -> Received packet of length %d \n", len);
 
   /* fill in code here */
 

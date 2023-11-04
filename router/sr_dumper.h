@@ -1,4 +1,4 @@
-/** 
+/**
  * This header file defines data structures for logging packets in tcpdump
  * format as well as a set of operations for logging.
  */
@@ -25,7 +25,7 @@
 
 #define min(a,b) ( (a) < (b) ? (a) : (b) )
 
-/* file header */
+ /* file header */
 struct pcap_file_header {
   uint32_t   magic;         /* magic number */
   uint16_t version_major; /* version number major */
@@ -49,8 +49,8 @@ struct pcap_pkthdr {
  * `struct timeval'
  */
 struct pcap_timeval {
-    int tv_sec;           /* seconds */
-    int tv_usec;          /* microseconds */
+  int tv_sec;           /* seconds */
+  int tv_usec;          /* microseconds */
 };
 
 
@@ -58,22 +58,22 @@ struct pcap_timeval {
  * How a `pcap_pkthdr' is actually stored in the dumpfile.
  */
 struct pcap_sf_pkthdr {
-    struct pcap_timeval ts;     /* time stamp */
-    uint32_t caplen;         /* length of portion present */
-    uint32_t len;            /* length this packet (off wire) */
+  struct pcap_timeval ts;     /* time stamp */
+  uint32_t caplen;         /* length of portion present */
+  uint32_t len;            /* length this packet (off wire) */
 };
 
 /**
  * Open a dump file and initialize the file.
  */
-FILE* sr_dump_open(const char *fname, int thiszone, int snaplen);
+FILE* sr_dump_open(const char* fname, int thiszone, int snaplen);
 
 /**
  * Write data into the log file
  */
-void sr_dump(FILE *fp, const struct pcap_pkthdr *h, const unsigned char *sp);
+void sr_dump(FILE* fp, const struct pcap_pkthdr* h, const unsigned char* sp);
 
 /**
  * Close the file
  */
-void sr_dump_close(FILE *fp);
+void sr_dump_close(FILE* fp);

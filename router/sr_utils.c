@@ -5,8 +5,8 @@
 #include "sr_utils.h"
 
 
-uint16_t cksum (const void *_data, int len) {
-  const uint8_t *data = _data;
+uint16_t cksum(const void* _data, int len) {
+  const uint8_t* data = _data;
   uint32_t sum;
 
   for (sum = 0;len >= 2; data += 2, len -= 2)
@@ -15,24 +15,24 @@ uint16_t cksum (const void *_data, int len) {
     sum += data[0] << 8;
   while (sum > 0xffff)
     sum = (sum >> 16) + (sum & 0xffff);
-  sum = htons (~sum);
+  sum = htons(~sum);
   return sum ? sum : 0xffff;
 }
 
 
-uint16_t ethertype(uint8_t *buf) {
-  sr_ethernet_hdr_t *ehdr = (sr_ethernet_hdr_t *)buf;
+uint16_t ethertype(uint8_t* buf) {
+  sr_ethernet_hdr_t* ehdr = (sr_ethernet_hdr_t*)buf;
   return ntohs(ehdr->ether_type);
 }
 
-uint8_t ip_protocol(uint8_t *buf) {
-  sr_ip_hdr_t *iphdr = (sr_ip_hdr_t *)(buf);
+uint8_t ip_protocol(uint8_t* buf) {
+  sr_ip_hdr_t* iphdr = (sr_ip_hdr_t*)(buf);
   return iphdr->ip_p;
 }
 
 
 /* Prints out formatted Ethernet address, e.g. 00:11:22:33:44:55 */
-void print_addr_eth(uint8_t *addr) {
+void print_addr_eth(uint8_t* addr) {
   int pos = 0;
   uint8_t cur;
   for (; pos < ETHER_ADDR_LEN; pos++) {
@@ -48,7 +48,7 @@ void print_addr_eth(uint8_t *addr) {
 void print_addr_ip(struct in_addr address) {
   char buf[INET_ADDRSTRLEN];
   if (inet_ntop(AF_INET, &address, buf, 100) == NULL)
-    fprintf(stderr,"inet_ntop error on address conversion\n");
+    fprintf(stderr, "inet_ntop error on address conversion\n");
   else
     fprintf(stderr, "%s\n", buf);
 }
@@ -67,8 +67,8 @@ void print_addr_ip_int(uint32_t ip) {
 
 
 /* Prints out fields in Ethernet header. */
-void print_hdr_eth(uint8_t *buf) {
-  sr_ethernet_hdr_t *ehdr = (sr_ethernet_hdr_t *)buf;
+void print_hdr_eth(uint8_t* buf) {
+  sr_ethernet_hdr_t* ehdr = (sr_ethernet_hdr_t*)buf;
   fprintf(stderr, "ETHERNET header:\n");
   fprintf(stderr, "\tdestination: ");
   print_addr_eth(ehdr->ether_dhost);
@@ -78,8 +78,8 @@ void print_hdr_eth(uint8_t *buf) {
 }
 
 /* Prints out fields in IP header. */
-void print_hdr_ip(uint8_t *buf) {
-  sr_ip_hdr_t *iphdr = (sr_ip_hdr_t *)(buf);
+void print_hdr_ip(uint8_t* buf) {
+  sr_ip_hdr_t* iphdr = (sr_ip_hdr_t*)(buf);
   fprintf(stderr, "IP header:\n");
   fprintf(stderr, "\tversion: %d\n", iphdr->ip_v);
   fprintf(stderr, "\theader length: %d\n", iphdr->ip_hl);
@@ -109,8 +109,8 @@ void print_hdr_ip(uint8_t *buf) {
 }
 
 /* Prints out ICMP header fields */
-void print_hdr_icmp(uint8_t *buf) {
-  sr_icmp_hdr_t *icmp_hdr = (sr_icmp_hdr_t *)(buf);
+void print_hdr_icmp(uint8_t* buf) {
+  sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(buf);
   fprintf(stderr, "ICMP header:\n");
   fprintf(stderr, "\ttype: %d\n", icmp_hdr->icmp_type);
   fprintf(stderr, "\tcode: %d\n", icmp_hdr->icmp_code);
@@ -120,8 +120,8 @@ void print_hdr_icmp(uint8_t *buf) {
 
 
 /* Prints out fields in ARP header */
-void print_hdr_arp(uint8_t *buf) {
-  sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(buf);
+void print_hdr_arp(uint8_t* buf) {
+  sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t*)(buf);
   fprintf(stderr, "ARP header\n");
   fprintf(stderr, "\thardware type: %d\n", ntohs(arp_hdr->ar_hrd));
   fprintf(stderr, "\tprotocol type: %d\n", ntohs(arp_hdr->ar_pro));
@@ -141,7 +141,7 @@ void print_hdr_arp(uint8_t *buf) {
 }
 
 /* Prints out all possible headers, starting from Ethernet */
-void print_hdrs(uint8_t *buf, uint32_t length) {
+void print_hdrs(uint8_t* buf, uint32_t length) {
 
   /* Ethernet */
   int minlength = sizeof(sr_ethernet_hdr_t);
