@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 
 #include "sr_if.h"
@@ -23,12 +25,27 @@
 #include "sr_utils.h"
 
  /*---------------------------------------------------------------------
-  * Method: sr_init(void)
-  * Scope:  Global
-  *
-  * Initialize the routing subsystem
-  *
-  *---------------------------------------------------------------------*/
+ *
+ * Local function declarations
+ *
+ *---------------------------------------------------------------------*/
+
+void send_arp_reply(
+  struct sr_instance* sr,
+  uint32_t reply_sip,
+  uint32_t reply_tip,
+  uint8_t reply_saddr[ETHER_ADDR_LEN],
+  uint8_t reply_daddr[ETHER_ADDR_LEN],
+  const char* interface
+);
+
+/*---------------------------------------------------------------------
+ * Method: sr_init(void)
+ * Scope:  Global
+ *
+ * Initialize the routing subsystem
+ *
+ *---------------------------------------------------------------------*/
 
 void sr_init(struct sr_instance* sr)
 {
@@ -66,7 +83,8 @@ void sr_init(struct sr_instance* sr)
  *
  *---------------------------------------------------------------------*/
 
-void sr_handlepacket(struct sr_instance* sr,
+void sr_handlepacket(
+  struct sr_instance* sr,
   uint8_t* packet/* lent */,
   unsigned int len,
   char* interface/* lent */)
@@ -78,7 +96,89 @@ void sr_handlepacket(struct sr_instance* sr,
 
   printf("*** -> Received packet of length %d \n", len);
 
-  /* fill in code here */
+  struct sr_if* interface_record = sr_get_interface(sr, interface);
 
+  switch (ethertype(packet)) {
+  case ethertype_arp: /* ARP Protocol */ {
+    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
+      printf("ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.");
+      return;
+    }
+    sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+
+    switch (ntohs(arp_header->ar_op)) {
+    case arp_op_request: {
+      if (arp_header->ar_tip == interface_record->ip) {
+        /* Send ARP Reply */
+        send_arp_reply(
+          sr,
+          interface_record->ip,
+          arp_header->ar_sip,
+          interface_record->addr,
+          arp_header->ar_sha,
+          interface
+        );
+      }
+      break;
+    }
+    case arp_op_reply:
+      break;
+    default:
+      break;
+    }
+    break;
+  }
+  case ethertype_ip: /* IP Protocol */
+    break;
+  default:
+    break;
+  }
 }/* end sr_ForwardPacket */
 
+
+void send_arp_reply(
+  struct sr_instance* sr,
+  uint32_t reply_sip,
+  uint32_t reply_tip,
+  uint8_t reply_saddr[ETHER_ADDR_LEN],
+  uint8_t reply_daddr[ETHER_ADDR_LEN],
+  const char* interface
+) {
+  /* [Step 1]. Create ethernet header */
+  sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
+
+  memcpy(ethernet_header->ether_shost, reply_saddr, ETHER_ADDR_LEN);
+  memcpy(ethernet_header->ether_dhost, reply_daddr, ETHER_ADDR_LEN);
+  ethernet_header->ether_type = htons(ethertype_arp);
+
+  /* [Step 2]. Create ARP header */
+  sr_arp_hdr_t* arp_header = malloc(sizeof(sr_arp_hdr_t));
+  arp_header->ar_hrd = htons(arp_hrd_ethernet);
+  arp_header->ar_pro = htons(ethertype_ip);
+  arp_header->ar_hln = ETHER_ADDR_LEN;
+  arp_header->ar_pln = IP_ADDR_LEN;
+  arp_header->ar_op = htons(arp_op_reply);
+  memcpy(arp_header->ar_sha, reply_saddr, ETHER_ADDR_LEN);
+  memcpy(arp_header->ar_tha, reply_daddr, ETHER_ADDR_LEN);
+  arp_header->ar_sip = reply_sip;
+  arp_header->ar_tip = reply_tip;
+
+  /* [Step 3]. Wrap into an entire reply packet */
+  int32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+  uint8_t* reply_packet = malloc(reply_packet_len);
+  memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
+  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
+
+  /* [Step 4]. Send the reply packet */
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface);
+  fprintf(stderr, "ARP Reply sent\n");
+  fprintf(stderr, "From: ");
+  print_addr_ip_int(ntohl(arp_header->ar_sip));
+  fprintf(stderr, "To: ");
+  print_addr_ip_int(ntohl(arp_header->ar_tip));
+
+  /* [Step 5]. Free the allocated memory */
+  free(ethernet_header);
+  free(arp_header);
+  free(reply_packet);
+}

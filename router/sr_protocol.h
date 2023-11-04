@@ -109,6 +109,9 @@ typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
  */
 struct sr_ip_hdr
 {
+#ifndef IP_ADDR_LEN
+#define IP_ADDR_LEN 4
+#endif
 #if __BYTE_ORDER == __LITTLE_ENDIAN
   unsigned int ip_hl : 4;		/* header length */
   unsigned int ip_v : 4;		/* version */
