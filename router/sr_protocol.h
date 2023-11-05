@@ -102,6 +102,14 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
+enum icmp_res_type {
+  echo_reply,
+  dest_net_unreachable,
+  dest_host_unreachable,
+  port_unreachable,
+  time_exceeded
+} __attribute__((packed));
+typedef enum icmp_res_type icmp_res_type_t;
 
 
 /*

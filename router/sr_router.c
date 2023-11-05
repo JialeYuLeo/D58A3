@@ -39,8 +39,9 @@ void send_arp_reply(
   const char* interface
 );
 
-void send_icmp_echo_reply(
+void send_icmp_reply(
   struct sr_instance* sr,
+  struct sr_if* interface,
   uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
   uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
   uint32_t ip_src,
@@ -48,7 +49,7 @@ void send_icmp_echo_reply(
   uint16_t ip_id,
   uint16_t ip_len,
   uint8_t* icmp_payload,
-  const char* interface
+  icmp_res_type_t icmp_res_type
 );
 
 /*---------------------------------------------------------------------
@@ -171,32 +172,36 @@ void sr_handlepacket(
     for (interface_walker = sr->if_list;
       interface_walker != NULL;
       interface_walker = interface_walker->next) {
-      /* The packet is sent to me... */
+      /* If the packet is sent to this router */
       if (interface_walker->ip == ip_header->ip_dst) {
-        printf("The packet is sent to me. \n");
-        if (ip_header->ip_p == ip_protocol_icmp) {
-          printf("ip_protocol_icmp\n");
-          send_icmp_echo_reply(
-            sr,
-            ether_header->ether_shost,
-            ether_header->ether_dhost,
-            ip_header->ip_src,
-            ip_header->ip_dst,
-            ip_header->ip_id,
-            ip_header->ip_len,
-            (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
-            interface
-          );
+        icmp_res_type_t icmp_res_type;
+        switch (ip_header->ip_p) {
+        case (ip_protocol_icmp): {
+          icmp_res_type = echo_reply;
+          break;
         }
-        else {
-          printf("The packet is not ICMP \n");
-          /* TODO: Non-ICMP */
+        default: /* Assume TCP or UDP protocols */
+          icmp_res_type = port_unreachable;
+          break;
         }
+        send_icmp_reply(
+          sr,
+          interface_walker,
+          ether_header->ether_dhost,
+          ether_header->ether_shost,
+          ip_header->ip_dst,
+          ip_header->ip_src,
+          ip_header->ip_id,
+          ip_header->ip_len,
+          (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+          icmp_res_type
+        );
         return;
       }
     }
     /* TODO: Forward packet */
     printf("Todo: Forward packet\n");
+    /* TODO: If unreachable, send_icmp_reply(..., icmp_restype, ...)*/
     break;
   }
   default:
@@ -253,8 +258,9 @@ void send_arp_reply(
   free(reply_packet);
 }
 
-void send_icmp_echo_reply(
+void send_icmp_reply(
   struct sr_instance* sr,
+  struct sr_if* interface,
   uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
   uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
   uint32_t ip_src,
@@ -262,9 +268,8 @@ void send_icmp_echo_reply(
   uint16_t ip_id,
   uint16_t ip_len,
   uint8_t* icmp_payload,
-  const char* interface
-)
-{
+  icmp_res_type_t icmp_res_type
+) {
   /* [Step 1]. Create Ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
 
@@ -292,8 +297,9 @@ void send_icmp_echo_reply(
   /* [Step 3]. Create ICMP header */
   uint16_t icmp_payload_len = ip_len - sizeof(sr_ip_hdr_t) - sizeof(sr_icmp_hdr_t);
   sr_icmp_hdr_t* icmp_reply_packet = malloc(sizeof(sr_icmp_hdr_t) + icmp_payload_len);
-  icmp_reply_packet->icmp_type = 0;
-  icmp_reply_packet->icmp_code = 0;
+
+  /* Set `icmp_reply_packet->icmp_type` and `icmp_reply_packet->icmp_code` */
+  set_icmp_type_and_code(icmp_reply_packet, icmp_res_type);
 
   memcpy(icmp_reply_packet + sizeof(sr_icmp_hdr_t), icmp_payload, icmp_payload_len);
 
@@ -310,11 +316,47 @@ void send_icmp_echo_reply(
     icmp_reply_packet, sizeof(sr_icmp_hdr_t) + icmp_payload_len);
 
   /* [Step 5]. Send the packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, interface);
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface->name);
 
   fprintf(stderr, "ICMP Reply sent\n");
   fprintf(stderr, "From: ");
   print_addr_ip_int(ntohl(ip_header->ip_src));
   fprintf(stderr, "To: ");
   print_addr_ip_int(ntohl(ip_header->ip_dst));
+}
+
+void set_icmp_type_and_code(
+  sr_icmp_hdr_t* icmp_reply_packet,
+  icmp_res_type_t icmp_res_type
+) {
+  switch (icmp_res_type) {
+  case (echo_reply): {
+    icmp_reply_packet->icmp_type = 0;
+    icmp_reply_packet->icmp_code = 0;
+    break;
+  }
+  case (dest_net_unreachable): {
+    icmp_reply_packet->icmp_type = 3;
+    icmp_reply_packet->icmp_code = 0;
+    break;
+  }
+  case (dest_host_unreachable): {
+    icmp_reply_packet->icmp_type = 3;
+    icmp_reply_packet->icmp_code = 1;
+    break;
+  }
+  case (port_unreachable): {
+    icmp_reply_packet->icmp_type = 3;
+    icmp_reply_packet->icmp_code = 3;
+    break;
+  }
+  case (time_exceeded): {
+    icmp_reply_packet->icmp_type = 11;
+    icmp_reply_packet->icmp_code = 0;
+    break;
+  }
+  default: {
+    break;
+  }
+  }
 }
