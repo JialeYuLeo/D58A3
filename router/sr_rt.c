@@ -25,7 +25,7 @@
   * Method: find the routing table using longest_prefix_match
   *
   *---------------------------------------------------------------------*/
-struct sr_rt* sr_find_longest_prefix_match(struct sr_instance* sr, uint32_t ip)
+struct sr_rt* sr_find_longest_prefix(struct sr_instance* sr, uint32_t ip)
 {
   struct sr_rt* res = null;
   uint32_t temp = 0;

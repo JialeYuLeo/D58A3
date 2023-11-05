@@ -11,6 +11,8 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 #include "sr_utils.h"
+#include "sr_rt.h"
+
 
 void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
   time_t now = time(NULL);
@@ -27,8 +29,9 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
         sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
         sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
-        struct sr_if* interface; /*TODO: = find_target_interface(...)*/
-
+        struct sr_rt* table; /* find_target_interface(...)*/
+        table = sr_find_longest_prefix(sr, ip_header->ip_dst);
+        struct sr_if* interface = sr_get_interface(sr,table->interface);
         send_icmp_reply(
           sr,
           interface,
@@ -41,12 +44,14 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
           (uint8_t*)(ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t)),
           dest_host_unreachable
         );
+          return;
+        } 
       }
       sr_arpreq_destroy(&sr->cache, arp_req);
     }
     else {
       /* TODO: Retry send arp request */
-      /* send_arp_request(...)*/
+      send_arp_request(sr,arp_req->ip)
       arp_req->sent = now;
       arp_req->times_sent++;
     }
@@ -318,7 +323,7 @@ void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
   arp_header->ar_tip = request_dst_ip;
 
   /* [Step 3]. Wrap into an entire reply packet */
-  int32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+  int32_t arp_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
   uint8_t* reply_packet = malloc(reply_packet_len);
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));

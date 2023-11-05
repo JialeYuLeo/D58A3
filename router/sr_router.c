@@ -165,10 +165,10 @@ void sr_handlepacket(
     sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
     sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
-    /* Sanity Check */
+    /* len and checksum validate */
     if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr))
     {
-      printf("** ERROR: The packet has ether_type set to IP but it's too short to contain an ARP header.\n");
+      printf("** ERROR: The packet has ether_type set to IP but it's too short to contain an IP header.\n");
       return;
     }
     if (cksum(ip_header,sizeof(sr_ip_hdr)) != 0xffff){
@@ -186,10 +186,23 @@ void sr_handlepacket(
       if (interface_walker->ip == ip_header->ip_dst)
       {
         icmp_res_type_t icmp_res_type;
+        sr_icmp_hdr_t *icmp_header = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
         switch (ip_header->ip_p)
         {
-        case (ip_protocol_icmp):
-        {
+          case (ip_protocol_icmp):
+        { 
+          /* len and checksum validate */
+          if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr))
+          {
+            printf("** ERROR: The packet has ether_type set to ICMP but it's too short to contain an ICMP header.\n");
+            return;
+          }
+          if (cksum(icmp_header,len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t)) != 0xffff){
+            printf("** ERROR: The packet has ether_type set to ICMP but failed checksum test.\n");
+            return;
+          }
+
           icmp_res_type = echo_reply;
           break;
         }
@@ -211,12 +224,10 @@ void sr_handlepacket(
         return;
       }
     }
-    /* TODO: Forward packet */
+    /* Forward packet */
     printf("Todo: Forward packet\n");
-
-    /* TODO: If unreachable, send_icmp_reply(..., icmp_restype, ...)*/
-
-    break;
+    forward_packet(sr,packet, len)
+    return;
   }
   default:
     break;
@@ -251,8 +262,7 @@ void send_arp_reply(
   arp_header->ar_tip = reply_tip;
 
   /* [Step 3]. Wrap into an entire reply packet */
-  int32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-  uint8_t* reply_packet = malloc(reply_packet_len);
+   
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
 
@@ -385,7 +395,6 @@ void forward_packet(struct sr_instance *sr,
                     uint8_t *packet /* lent */,
                     unsigned int len)
 {
-
   /* REQUIRES */
   assert(sr);
   assert(packet);
@@ -405,13 +414,39 @@ void forward_packet(struct sr_instance *sr,
 
   /* [Step3]. Check Routing table*/
   struct sr_rt *rt;
-	rt = sr_longest_prefix_match(sr, ip_hdr->ip_dst);
+	rt = sr_find_longest_prefix_match(sr, ip_hdr->ip_dst);
   if(!rt){
     icmp_res_type = dest_net_unreachable;
+    send_icmp_reply(
+          sr,
+          interface_walker,
+          ether_header->ether_dhost,
+          ether_header->ether_shost,
+          ip_header->ip_dst,
+          ip_header->ip_src,
+          ip_header->ip_id,
+          ip_header->ip_len,
+          (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+          icmp_res_type);
+        return;
+  }
+
+  struct sr_if *interface = sr_get_interface(sr, rt->interface);
+  struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_hdr->ip_dst);
+  if (entry){
+    memcpy(ether_header->ether_shost, interface->addr, ETHER_ADDR_LEN);
+		memcpy(ether_header->ether_dhost, entry->mac, ETHER_ADDR_LEN);
+    free(entry)
+  } else{
+    struct sr_arpreq *req = arpcache_queuereq(ip, packet, len)
+    handle_arpreq(req);
+    return;
   }
 
 
+  ip_header->ip_ttl--;
+  ip_header->ip_sum = 0;
+  ip_header->ip_sum = cksum(ip_header, sizeof(sr_ip_hdr_t));
 
-
-
+  sr_send_packet(sr, ip_header->ip_dst, len, interface->name);
 }
