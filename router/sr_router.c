@@ -98,6 +98,7 @@ void sr_handlepacket(
   assert(interface);
 
   printf("*** -> Received packet of length %d \n", len);
+  
 
   struct sr_if* interface_record = sr_get_interface(sr, interface);
 
@@ -165,13 +166,14 @@ void sr_handlepacket(
     sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
     sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
+
     /* len and checksum validate */
-    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr))
+    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t))
     {
       printf("** ERROR: The packet has ether_type set to IP but it's too short to contain an IP header.\n");
       return;
     }
-    if (cksum(ip_header,sizeof(sr_ip_hdr)) != 0xffff){
+    if (cksum(ip_header,sizeof(sr_ip_hdr_t)) != 0xffff){
        printf("** ERROR: The packet has ether_type set to IP but failed checksum test.\n");
       return;
     }
@@ -193,7 +195,7 @@ void sr_handlepacket(
           case (ip_protocol_icmp):
         { 
           /* len and checksum validate */
-          if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr))
+          if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t))
           {
             printf("** ERROR: The packet has ether_type set to ICMP but it's too short to contain an ICMP header.\n");
             return;
@@ -225,8 +227,7 @@ void sr_handlepacket(
       }
     }
     /* Forward packet */
-    printf("Todo: Forward packet\n");
-    forward_packet(sr,packet, len)
+    forward_packet(sr, packet, len);
     return;
   }
   default:
@@ -262,7 +263,8 @@ void send_arp_reply(
   arp_header->ar_tip = reply_tip;
 
   /* [Step 3]. Wrap into an entire reply packet */
-   
+  int32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+  uint8_t* reply_packet = malloc(reply_packet_len);
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
 
@@ -347,6 +349,8 @@ void send_icmp_reply(
   print_addr_ip_int(ntohl(ip_header->ip_dst));
 }
 
+
+
 void set_icmp_type_and_code(
   sr_icmp_hdr_t* icmp_reply_packet,
   icmp_res_type_t icmp_res_type)
@@ -392,18 +396,23 @@ void set_icmp_type_and_code(
 }
 
 void forward_packet(struct sr_instance *sr,
-                    uint8_t *packet /* lent */,
+                    uint8_t *buf,
                     unsigned int len)
 {
   /* REQUIRES */
   assert(sr);
-  assert(packet);
+  assert(buf);
+
+  uint8_t *packet = malloc(len);
+	memcpy(packet, buf, len);
 
   /* [Step1]. Creat header*/
-  sr_ethernet_hdr_t *ether_header = (sr_ethernet_hdr_t *)buf;
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t));
-  printf(***->Forwarding packet to, ntohs(ip_header->ip_dst));
+  sr_ethernet_hdr_t *ether_header = (sr_ethernet_hdr_t *)packet;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
 
+  printf("***->Forwarding packet to\n");
+  print_addr_ip_int(ip_header->ip_dst);
+  print_hdr_ip(packet);
   icmp_res_type_t icmp_res_type;
 
   /* [Step2]. Check ttl*/
@@ -414,12 +423,15 @@ void forward_packet(struct sr_instance *sr,
 
   /* [Step3]. Check Routing table*/
   struct sr_rt *rt;
-	rt = sr_find_longest_prefix_match(sr, ip_hdr->ip_dst);
+	rt = sr_find_longest_prefix(sr, ip_header->ip_dst);
+  
+  struct sr_if *interface = sr_get_interface(sr, rt->interface);
+
   if(!rt){
     icmp_res_type = dest_net_unreachable;
     send_icmp_reply(
           sr,
-          interface_walker,
+          interface, /*interface        */  
           ether_header->ether_dhost,
           ether_header->ether_shost,
           ip_header->ip_dst,
@@ -431,15 +443,15 @@ void forward_packet(struct sr_instance *sr,
         return;
   }
 
-  struct sr_if *interface = sr_get_interface(sr, rt->interface);
-  struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_hdr->ip_dst);
+  /* struct sr_if *interface = sr_get_interface(sr, rt->interface); */ 
+  struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_header->ip_dst);
   if (entry){
     memcpy(ether_header->ether_shost, interface->addr, ETHER_ADDR_LEN);
 		memcpy(ether_header->ether_dhost, entry->mac, ETHER_ADDR_LEN);
-    free(entry)
+    free(entry);
   } else{
-    struct sr_arpreq *req = arpcache_queuereq(ip, packet, len)
-    handle_arpreq(req);
+    struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, ip_header->ip_dst, packet, len, rt->interface);
+    handle_arpreq(sr,req);
     return;
   }
 
@@ -448,5 +460,5 @@ void forward_packet(struct sr_instance *sr,
   ip_header->ip_sum = 0;
   ip_header->ip_sum = cksum(ip_header, sizeof(sr_ip_hdr_t));
 
-  sr_send_packet(sr, ip_header->ip_dst, len, interface->name);
+  sr_send_packet(sr, packet, len, interface->name);
 }

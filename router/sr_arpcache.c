@@ -44,18 +44,17 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
           (uint8_t*)(ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t)),
           dest_host_unreachable
         );
-          return;
-        } 
+        }
+        sr_arpreq_destroy(&sr->cache, arp_req);
+        return; 
       }
-      sr_arpreq_destroy(&sr->cache, arp_req);
     }
     else {
       /* TODO: Retry send arp request */
-      send_arp_request(sr,arp_req->ip)
+      send_arp_request(sr,arp_req->ip);
       arp_req->sent = now;
       arp_req->times_sent++;
     }
-  }
 }
 /*
   This function gets called every second. For each request sent out, we keep
@@ -301,7 +300,7 @@ void* sr_arpcache_timeout(void* sr_ptr) {
 void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
 {
   uint8_t broadcast_addr[ETHER_ADDR_LEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-  struct sr_if* interface; /* TODO: find interface */
+  struct sr_if* interface = NULL; /* TODO: find interface */
 
   /* [Step 1]. Create ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
@@ -324,12 +323,12 @@ void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
 
   /* [Step 3]. Wrap into an entire reply packet */
   int32_t arp_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
-  uint8_t* reply_packet = malloc(reply_packet_len);
+  uint8_t* reply_packet = malloc(arp_packet_len);
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
 
   /* [Step 4]. Send the reply packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, interface->name);
+  sr_send_packet(sr, reply_packet, arp_packet_len, interface->name);
 
   fprintf(stderr, "ARP Request sent\n");
   fprintf(stderr, "From: ");

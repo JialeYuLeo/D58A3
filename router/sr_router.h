@@ -78,13 +78,14 @@ void send_icmp_reply(
   uint16_t ip_len,
   uint8_t* icmp_payload,
   icmp_res_type_t icmp_res_type);
+void forward_packet(struct sr_instance*,
+                    uint8_t*,
+                    unsigned int);
 
 /* -- sr_if.c -- */
 void sr_add_interface(struct sr_instance*, const char*);
 void sr_set_ether_ip(struct sr_instance*, uint32_t);
 void sr_set_ether_addr(struct sr_instance*, const unsigned char*);
 void sr_print_if_list(struct sr_instance*);
-
-void forward_packet(struct sr_instance ,uint8_t, unsigned int)
 
 #endif /* SR_ROUTER_H */

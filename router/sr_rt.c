@@ -27,15 +27,15 @@
   *---------------------------------------------------------------------*/
 struct sr_rt* sr_find_longest_prefix(struct sr_instance* sr, uint32_t ip)
 {
-  struct sr_rt* res = null;
+  struct sr_rt* res = NULL;
   uint32_t temp = 0;
   struct sr_rt* rt_walker = sr->routing_table;
-  for (rt_walker; rt_walker != null; rt_walker->next)
+  for (rt_walker = sr->routing_table; rt_walker != NULL; rt_walker = rt_walker->next)
   {
     if (((rt_walker->mask.s_addr & rt_walker->dest.s_addr) == (rt_walker->mask.s_addr & ip)) && (rt_walker->mask.s_addr > temp))
     {
       res = rt_walker;
-      temp = mask;
+      temp = rt_walker->mask.s_addr;
     }
   }
   return res;
