@@ -101,14 +101,16 @@ void sr_handlepacket(
   switch (ethertype(packet)) {
   case ethertype_arp: /* ARP Protocol */ {
     if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
-      printf("ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.");
+      printf("** ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.\n");
       return;
     }
     sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
     switch (ntohs(arp_header->ar_op)) {
     case arp_op_request: {
+      printf("arp_op_request\n");
       if (arp_header->ar_tip == interface_record->ip) {
+        /* ARP request received. */
         /* Send ARP Reply */
         send_arp_reply(
           sr,
@@ -122,13 +124,34 @@ void sr_handlepacket(
       break;
     }
     case arp_op_reply:
+      printf("arp_op_reply\n");
+      if (arp_header->ar_tip == interface_record->ip) {
+        /* ARP reply received. */
+        /* [Step 1]. Update ARP cache */
+        struct sr_arpreq* arp_req = sr_arpcache_insert(
+          &sr->cache, arp_header->ar_sha, arp_header->ar_sip);
+
+        /* [Step 2]. Send queued packets */
+        struct sr_packet* packet_walker;
+        for (
+          packet_walker = arp_req->packets;
+          packet_walker != NULL;
+          packet_walker = packet_walker->next) {
+          sr_send_packet(sr, packet_walker->buf, packet_walker->len, packet_walker->iface);
+          printf("Queued packet sent. Length: %d\n", packet_walker->len);
+        }
+        /* [Step 3]. Destroy ARP Request */
+        sr_arpreq_destroy(&sr->cache, arp_req);
+      }
       break;
     default:
+      printf("** ERROR: Unexpected ARP operation code: %d.\n", ntohs(arp_header->ar_op));
       break;
     }
     break;
   }
   case ethertype_ip: /* IP Protocol */
+    printf("ethertype_ip\n");
     break;
   default:
     break;
@@ -171,6 +194,7 @@ void send_arp_reply(
 
   /* [Step 4]. Send the reply packet */
   sr_send_packet(sr, reply_packet, reply_packet_len, interface);
+
   fprintf(stderr, "ARP Reply sent\n");
   fprintf(stderr, "From: ");
   print_addr_ip_int(ntohl(arp_header->ar_sip));
