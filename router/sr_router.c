@@ -39,6 +39,18 @@ void send_arp_reply(
   const char* interface
 );
 
+void send_icmp_echo_reply(
+  struct sr_instance* sr,
+  uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
+  uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
+  uint32_t ip_src,
+  uint32_t ip_dst,
+  uint16_t ip_id,
+  uint16_t ip_len,
+  uint8_t* icmp_payload,
+  const char* interface
+);
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -150,9 +162,43 @@ void sr_handlepacket(
     }
     break;
   }
-  case ethertype_ip: /* IP Protocol */
+  case ethertype_ip: /* IP Protocol */ {
     printf("ethertype_ip\n");
+    sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
+    sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    struct sr_if* interface_walker;
+    /* Check the destination */
+    for (interface_walker = sr->if_list;
+      interface_walker != NULL;
+      interface_walker = interface_walker->next) {
+      /* The packet is sent to me... */
+      if (interface_walker->ip == ip_header->ip_dst) {
+        printf("The packet is sent to me. \n");
+        if (ip_header->ip_p == ip_protocol_icmp) {
+          printf("ip_protocol_icmp\n");
+          send_icmp_echo_reply(
+            sr,
+            ether_header->ether_shost,
+            ether_header->ether_dhost,
+            ip_header->ip_src,
+            ip_header->ip_dst,
+            ip_header->ip_id,
+            ip_header->ip_len,
+            (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+            interface
+          );
+        }
+        else {
+          printf("The packet is not ICMP \n");
+          /* TODO: Non-ICMP */
+        }
+        return;
+      }
+    }
+    /* TODO: Forward packet */
+    printf("Todo: Forward packet\n");
     break;
+  }
   default:
     break;
   }
@@ -205,4 +251,70 @@ void send_arp_reply(
   free(ethernet_header);
   free(arp_header);
   free(reply_packet);
+}
+
+void send_icmp_echo_reply(
+  struct sr_instance* sr,
+  uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
+  uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
+  uint32_t ip_src,
+  uint32_t ip_dst,
+  uint16_t ip_id,
+  uint16_t ip_len,
+  uint8_t* icmp_payload,
+  const char* interface
+)
+{
+  /* [Step 1]. Create Ethernet header */
+  sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
+
+  ethernet_header->ether_type = htons(ethertype_ip);
+  memcpy(ethernet_header->ether_dhost, ether_mac_addr_src, ETHER_ADDR_LEN);
+  memcpy(ethernet_header->ether_shost, ether_mac_addr_dst, ETHER_ADDR_LEN);
+
+
+  /* [Step 2]. Create IP header */
+  sr_ip_hdr_t* ip_header = malloc(sizeof(sr_ip_hdr_t));
+  ip_header->ip_src = ip_src;
+  ip_header->ip_dst = ip_dst;
+  ip_header->ip_v = 4;
+  ip_header->ip_hl = 5;
+  ip_header->ip_tos = 0;
+  ip_header->ip_len = ip_len;
+  ip_header->ip_id = htons(ip_id);
+  ip_header->ip_off = htons(IP_DF);
+  ip_header->ip_ttl = 64;
+  ip_header->ip_p = ip_protocol_icmp;
+
+  ip_header->ip_sum = 0;
+  ip_header->ip_sum = cksum(ip_header, sizeof(sr_ip_hdr_t));
+
+  /* [Step 3]. Create ICMP header */
+  uint16_t icmp_payload_len = ip_len - sizeof(sr_ip_hdr_t) - sizeof(sr_icmp_hdr_t);
+  sr_icmp_hdr_t* icmp_reply_packet = malloc(sizeof(sr_icmp_hdr_t) + icmp_payload_len);
+  icmp_reply_packet->icmp_type = 0;
+  icmp_reply_packet->icmp_code = 0;
+
+  memcpy(icmp_reply_packet + sizeof(sr_icmp_hdr_t), icmp_payload, icmp_payload_len);
+
+  icmp_reply_packet->icmp_sum = 0;
+  icmp_reply_packet->icmp_sum = cksum(icmp_reply_packet, icmp_payload_len);
+
+  /* [Step 4]. Wrap the final reply packet */
+  uint32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + \
+    sizeof(sr_icmp_hdr_t) + icmp_payload_len;
+  uint8_t* reply_packet = malloc(reply_packet_len);
+  memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
+  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), ip_header, sizeof(sr_ip_hdr_t));
+  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), \
+    icmp_reply_packet, sizeof(sr_icmp_hdr_t) + icmp_payload_len);
+
+  /* [Step 5]. Send the packet */
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface);
+
+  fprintf(stderr, "ICMP Reply sent\n");
+  fprintf(stderr, "From: ");
+  print_addr_ip_int(ntohl(ip_header->ip_src));
+  fprintf(stderr, "To: ");
+  print_addr_ip_int(ntohl(ip_header->ip_dst));
 }
