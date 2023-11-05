@@ -15,6 +15,11 @@
 
 
 void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
+  fprintf(stderr, "handle_arpreq\n");
+  sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)arp_req->packets->buf;
+  sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(arp_req->packets->buf + sizeof(sr_ethernet_hdr_t));
+  print_hdr_eth((uint8_t*)ether_header);
+  print_hdr_ip((uint8_t*)ip_header);
   time_t now = time(NULL);
   if (difftime(now, arp_req->sent) > 1.0) {
     if (arp_req->times_sent >= 5) {
@@ -25,7 +30,7 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
         packet_walker != NULL;
         packet_walker = packet_walker->next)
       {
-        uint8_t* packet = (uint8_t*)arp_req->packets;
+        uint8_t* packet = (uint8_t*)packet_walker->buf;
         sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
         sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
@@ -48,12 +53,12 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
       sr_arpreq_destroy(&sr->cache, arp_req);
       return;
     }
-  }
-  else {
-    /* TODO: Retry send arp request */
-    send_arp_request(sr, arp_req->ip);
-    arp_req->sent = now;
-    arp_req->times_sent++;
+    else {
+      /* TODO: Retry send arp request */
+      send_arp_request(sr, arp_req->ip);
+      arp_req->sent = now;
+      arp_req->times_sent++;
+    }
   }
 }
 /*
@@ -111,6 +116,9 @@ struct sr_arpreq* sr_arpcache_queuereq(struct sr_arpcache* cache,
   unsigned int packet_len,
   char* iface)
 {
+  fprintf(stderr, "sr_arpcache_queuereq, packet_len = %d, iface = %s\n", packet_len, iface);
+  print_hdr_eth((u_int8_t*)packet);
+  print_hdr_ip((u_int8_t*)(packet + sizeof(sr_ethernet_hdr_t)));
   pthread_mutex_lock(&(cache->lock));
 
   struct sr_arpreq* req;
@@ -143,6 +151,9 @@ struct sr_arpreq* sr_arpcache_queuereq(struct sr_arpcache* cache,
 
   pthread_mutex_unlock(&(cache->lock));
 
+  fprintf(stderr, "sr_arpcache_queuereq finished\n");
+  print_hdr_eth((u_int8_t*)req->packets->buf);
+  print_hdr_ip((u_int8_t*)(req->packets->buf + sizeof(sr_ethernet_hdr_t)));
   return req;
 }
 
@@ -299,8 +310,12 @@ void* sr_arpcache_timeout(void* sr_ptr) {
 
 void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
 {
+  fprintf(stderr, "send_arp_request\n");
   uint8_t broadcast_addr[ETHER_ADDR_LEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-  struct sr_if* interface = sr_find_longest_prefix(sr, request_dst_ip)->interface; /* TODO: find interface */
+  char* interface_str = sr_find_longest_prefix(sr, request_dst_ip)->interface; /* TODO: find interface */
+  fprintf(stderr, "interface = %s\n", interface_str);
+  /* TODO: if unreachable, send icmp unreachable reply*/
+  struct sr_if* interface = sr_get_interface(sr, interface_str);
 
   /* [Step 1]. Create ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
@@ -320,6 +335,8 @@ void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
   memcpy(arp_header->ar_tha, broadcast_addr, ETHER_ADDR_LEN);
   arp_header->ar_sip = interface->ip;
   arp_header->ar_tip = request_dst_ip;
+
+  print_hdr_arp((uint8_t*)arp_header);
 
   /* [Step 3]. Wrap into an entire reply packet */
   int32_t arp_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);

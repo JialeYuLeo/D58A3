@@ -43,6 +43,7 @@
 
 #include "sha1.h"
 #include "vnscommand.h"
+#include "sr_utils.h"
 
 static void sr_log_packet(struct sr_instance*, uint8_t*, int);
 static int  sr_arp_req_not_for_us(struct sr_instance* sr,
@@ -547,6 +548,8 @@ sr_ether_addrs_match_interface(struct sr_instance* sr, /* borrowed */
 
   if (memcmp(ether_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN) != 0) {
     fprintf(stderr, "** Error, source address does not match interface\n");
+    print_addr_eth(ether_hdr->ether_shost);
+    print_addr_eth(iface->addr);
     return 0;
   }
 

@@ -27,9 +27,10 @@
   *---------------------------------------------------------------------*/
 struct sr_rt* sr_find_longest_prefix(struct sr_instance* sr, uint32_t ip)
 {
+  fprintf(stderr, "\n\ninside: before:");
   struct sr_rt* res = NULL;
   uint32_t temp = 0;
-  struct sr_rt* rt_walker = sr->routing_table;
+  struct sr_rt* rt_walker;
   for (rt_walker = sr->routing_table; rt_walker != NULL; rt_walker = rt_walker->next)
   {
     if (((rt_walker->mask.s_addr & rt_walker->dest.s_addr) == (rt_walker->mask.s_addr & ip)) && (rt_walker->mask.s_addr > temp))
@@ -38,6 +39,7 @@ struct sr_rt* sr_find_longest_prefix(struct sr_instance* sr, uint32_t ip)
       temp = rt_walker->mask.s_addr;
     }
   }
+  fprintf(stderr, "inside after: interface = %s\n\n\n", res->interface);
   return res;
 }
 

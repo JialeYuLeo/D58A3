@@ -136,22 +136,29 @@ void sr_handlepacket(
       fprintf(stderr, "arp_op_reply\n");
       if (arp_header->ar_tip == interface_record->ip)
       {
+        fprintf(stderr, "arp_op_reply: my ip \n");
         /* ARP reply received. */
         /* [Step 1]. Update ARP cache */
         struct sr_arpreq* arp_req = sr_arpcache_insert(
-          &sr->cache, arp_header->ar_sha, arp_header->ar_sip);
+          &sr->cache, arp_header->ar_sha, ntohl(arp_header->ar_sip));
+        if (arp_req) {
+          fprintf(stderr, "arp_op_reply: inserted, arp_req->ip =");
+          print_addr_ip_int(htonl(arp_req->ip));
+          /* [Step 2]. Send queued packets */
+          struct sr_packet* packet_walker;
+          for (
+            packet_walker = arp_req->packets;
+            packet_walker != NULL;
+            packet_walker = packet_walker->next)
+          {
 
-        /* [Step 2]. Send queued packets */
-        struct sr_packet* packet_walker;
-        for (
-          packet_walker = arp_req->packets;
-          packet_walker != NULL;
-          packet_walker = packet_walker->next) {
-          sr_send_packet(sr, packet_walker->buf, packet_walker->len, packet_walker->iface);
-          printf("Queued packet sent. Length: %d\n", packet_walker->len);
+            fprintf(stderr, "arp_op_reply: interface=%s \n", packet_walker->iface);
+            sr_send_packet(sr, packet_walker->buf, packet_walker->len, packet_walker->iface);
+            fprintf(stderr, "Queued packet sent. Length: %d\n", packet_walker->len);
+          }
+          /* [Step 3]. Destroy ARP Request */
+          sr_arpreq_destroy(&sr->cache, arp_req);
         }
-        /* [Step 3]. Destroy ARP Request */
-        sr_arpreq_destroy(&sr->cache, arp_req);
       }
       break;
     default:
@@ -412,6 +419,7 @@ void forward_packet(struct sr_instance* sr,
 
   fprintf(stderr, "***->Forwarding packet to: ");
   print_addr_ip_int(ntohl(ip_header->ip_dst));
+  print_hdr_eth((u_int8_t*)ether_header);
   print_hdr_ip((u_int8_t*)ip_header);
   icmp_res_type_t icmp_res_type;
 
@@ -452,7 +460,9 @@ void forward_packet(struct sr_instance* sr,
     free(entry);
   }
   else {
-    fprintf(stderr, "before quereq");
+    fprintf(stderr, "before queue req\n");
+    print_hdr_eth((u_int8_t*)ether_header);
+    print_hdr_ip((u_int8_t*)ip_header);
     struct sr_arpreq* req = sr_arpcache_queuereq(&sr->cache, ip_header->ip_dst, packet_copy, len, rt->interface);
     handle_arpreq(sr, req);
     return;
