@@ -440,8 +440,8 @@ void forward_packet(struct sr_instance* sr,
   rt = sr_find_longest_prefix(sr, ip_header->ip_dst);
 
   if (!rt) {
-    return;
     icmp_res_type = dest_net_unreachable;
+    rt = sr_find_longest_prefix(sr, ip_header->ip_src);
     struct sr_if* interface = sr_get_interface(sr, rt->interface);
     send_icmp_reply(
       sr,
