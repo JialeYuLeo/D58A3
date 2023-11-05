@@ -160,10 +160,22 @@ void sr_handlepacket(
     break;
   }
   case ethertype_ip: /* IP Protocol */
-  {
+  {  
     printf("ethertype_ip\n");
     sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
     sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+
+    /* Sanity Check */
+    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr))
+    {
+      printf("** ERROR: The packet has ether_type set to IP but it's too short to contain an ARP header.\n");
+      return;
+    }
+    if (cksum(ip_header,sizeof(sr_ip_hdr)) != 0xffff){
+       printf("** ERROR: The packet has ether_type set to IP but failed checksum test.\n");
+      return;
+    }
+
     struct sr_if* interface_walker;
     /* Check the destination */
     for (interface_walker = sr->if_list;
@@ -369,15 +381,37 @@ void set_icmp_type_and_code(
   }
 }
 
-void forward_packet(struct sr_instance* sr,
-  uint8_t* packet /* lent */,
-  unsigned int len)
+void forward_packet(struct sr_instance *sr,
+                    uint8_t *packet /* lent */,
+                    unsigned int len)
 {
 
   /* REQUIRES */
   assert(sr);
   assert(packet);
 
-  sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)buf;
-  sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t));
+  /* [Step1]. Creat header*/
+  sr_ethernet_hdr_t *ether_header = (sr_ethernet_hdr_t *)buf;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t));
+  printf(***->Forwarding packet to, ntohs(ip_header->ip_dst));
+
+  icmp_res_type_t icmp_res_type;
+
+  /* [Step2]. Check ttl*/
+  if (ip_header->ip_ttl == 1)
+  {
+    icmp_res_type = time_exceeded;
+  }
+
+  /* [Step3]. Check Routing table*/
+  struct sr_rt *rt;
+	rt = sr_longest_prefix_match(sr, ip_hdr->ip_dst);
+  if(!rt){
+    icmp_res_type = dest_net_unreachable;
+  }
+
+
+
+
+
 }
