@@ -120,6 +120,7 @@ void sr_handlepacket(
       fprintf(stderr, "arp_op_request\n");
       if (arp_header->ar_tip == interface_record->ip)
       {
+        fprintf(stderr, "This router got an ARP request. At interface %s\n", interface);
         /* ARP request received. */
         /* Send ARP Reply */
         send_arp_reply(
@@ -136,11 +137,11 @@ void sr_handlepacket(
       fprintf(stderr, "arp_op_reply\n");
       if (arp_header->ar_tip == interface_record->ip)
       {
-        fprintf(stderr, "arp_op_reply: my ip \n");
+        fprintf(stderr, "arp_op_reply: my ip： \n");
         /* ARP reply received. */
         /* [Step 1]. Update ARP cache */
         struct sr_arpreq* arp_req = sr_arpcache_insert(
-          &sr->cache, arp_header->ar_sha, ntohl(arp_header->ar_sip));
+          &sr->cache, arp_header->ar_sha, arp_header->ar_sip);
         if (arp_req) {
           fprintf(stderr, "arp_op_reply: inserted, arp_req->ip =");
           print_addr_ip_int(htonl(arp_req->ip));
@@ -153,7 +154,7 @@ void sr_handlepacket(
           {
 
             fprintf(stderr, "arp_op_reply: interface=%s \n", packet_walker->iface);
-            sr_send_packet(sr, packet_walker->buf, packet_walker->len, packet_walker->iface);
+            forward_packet(sr, packet_walker->buf, packet_walker->len);
             fprintf(stderr, "Queued packet sent. Length: %d\n", packet_walker->len);
           }
           /* [Step 3]. Destroy ARP Request */
@@ -275,14 +276,16 @@ void send_arp_reply(
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
 
+  char* interface_str = sr_find_longest_prefix(sr, reply_tip)->interface;
   /* [Step 4]. Send the reply packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, interface);
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface_str);
 
   fprintf(stderr, "ARP Reply sent\n");
   fprintf(stderr, "From: ");
   print_addr_ip_int(ntohl(arp_header->ar_sip));
   fprintf(stderr, "To: ");
   print_addr_ip_int(ntohl(arp_header->ar_tip));
+  fprintf(stderr, "Interface: %s ? %s\n", interface_str, interface);
 
   /* [Step 5]. Free the allocated memory */
   free(ethernet_header);
