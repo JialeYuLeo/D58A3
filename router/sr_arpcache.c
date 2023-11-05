@@ -300,7 +300,7 @@ void* sr_arpcache_timeout(void* sr_ptr) {
 void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
 {
   uint8_t broadcast_addr[ETHER_ADDR_LEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-  struct sr_if* interface = NULL; /* TODO: find interface */
+  struct sr_if* interface = sr_find_longest_prefix(sr, request_dst_ip)->interface; /* TODO: find interface */
 
   /* [Step 1]. Create ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));

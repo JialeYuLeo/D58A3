@@ -97,7 +97,7 @@ void sr_handlepacket(
   assert(packet);
   assert(interface);
 
-  printf("*** -> Received packet of length %d \n", len);
+  fprintf(stderr,"*** -> Received packet of length %d \n", len);
   
 
   struct sr_if* interface_record = sr_get_interface(sr, interface);
@@ -108,7 +108,7 @@ void sr_handlepacket(
   {
     if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t))
     {
-      printf("** ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.\n");
+      fprintf(stderr,"** ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.\n");
       return;
     }
     sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
@@ -117,7 +117,7 @@ void sr_handlepacket(
     {
     case arp_op_request:
     {
-      printf("arp_op_request\n");
+      fprintf(stderr,"arp_op_request\n");
       if (arp_header->ar_tip == interface_record->ip)
       {
         /* ARP request received. */
@@ -133,7 +133,7 @@ void sr_handlepacket(
       break;
     }
     case arp_op_reply:
-      printf("arp_op_reply\n");
+      fprintf(stderr,"arp_op_reply\n");
       if (arp_header->ar_tip == interface_record->ip)
       {
         /* ARP reply received. */
@@ -155,14 +155,14 @@ void sr_handlepacket(
       }
       break;
     default:
-      printf("** ERROR: Unexpected ARP operation code: %d.\n", ntohs(arp_header->ar_op));
+      fprintf(stderr,"** ERROR: Unexpected ARP operation code: %d.\n", ntohs(arp_header->ar_op));
       break;
     }
     break;
   }
   case ethertype_ip: /* IP Protocol */
   {  
-    printf("ethertype_ip\n");
+    fprintf(stderr,"ethertype_ip\n");
     sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
     sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
@@ -170,11 +170,11 @@ void sr_handlepacket(
     /* len and checksum validate */
     if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t))
     {
-      printf("** ERROR: The packet has ether_type set to IP but it's too short to contain an IP header.\n");
+      fprintf(stderr,"** ERROR: The packet has ether_type set to IP but it's too short to contain an IP header.\n");
       return;
     }
     if (cksum(ip_header,sizeof(sr_ip_hdr_t)) != 0xffff){
-       printf("** ERROR: The packet has ether_type set to IP but failed checksum test.\n");
+       fprintf(stderr,"** ERROR: The packet has ether_type set to IP but failed checksum test.\n");
       return;
     }
 
@@ -197,11 +197,11 @@ void sr_handlepacket(
           /* len and checksum validate */
           if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t))
           {
-            printf("** ERROR: The packet has ether_type set to ICMP but it's too short to contain an ICMP header.\n");
+            fprintf(stderr,"** ERROR: The packet has ether_type set to ICMP but it's too short to contain an ICMP header.\n");
             return;
           }
           if (cksum(icmp_header,len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t)) != 0xffff){
-            printf("** ERROR: The packet has ether_type set to ICMP but failed checksum test.\n");
+            fprintf(stderr,"** ERROR: The packet has ether_type set to ICMP but failed checksum test.\n");
             return;
           }
 
@@ -396,23 +396,23 @@ void set_icmp_type_and_code(
 }
 
 void forward_packet(struct sr_instance *sr,
-                    uint8_t *buf,
+                    uint8_t *packet,
                     unsigned int len)
 {
   /* REQUIRES */
   assert(sr);
-  assert(buf);
+  assert(packet);
 
-  uint8_t *packet = malloc(len);
-	memcpy(packet, buf, len);
+  uint8_t* packet_copy = malloc(len);
+  memcpy(packet_copy, packet, len);
 
   /* [Step1]. Creat header*/
-  sr_ethernet_hdr_t *ether_header = (sr_ethernet_hdr_t *)packet;
-  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+  sr_ethernet_hdr_t *ether_header = (sr_ethernet_hdr_t *)packet_copy;
+  sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet_copy + sizeof(sr_ethernet_hdr_t));
 
-  printf("***->Forwarding packet to\n");
-  print_addr_ip_int(ip_header->ip_dst);
-  print_hdr_ip(packet);
+  fprintf(stderr,"***->Forwarding packet to: ");
+  print_addr_ip_int(ntohl(ip_header->ip_dst));
+  print_hdr_ip((u_int8_t* )ip_header);
   icmp_res_type_t icmp_res_type;
 
   /* [Step2]. Check ttl*/
@@ -424,14 +424,14 @@ void forward_packet(struct sr_instance *sr,
   /* [Step3]. Check Routing table*/
   struct sr_rt *rt;
 	rt = sr_find_longest_prefix(sr, ip_header->ip_dst);
-  
-  struct sr_if *interface = sr_get_interface(sr, rt->interface);
 
   if(!rt){
+    return;
     icmp_res_type = dest_net_unreachable;
+    struct sr_if *interface = sr_get_interface(sr, rt->interface); 
     send_icmp_reply(
           sr,
-          interface, /*interface        */  
+          interface, 
           ether_header->ether_dhost,
           ether_header->ether_shost,
           ip_header->ip_dst,
@@ -443,22 +443,27 @@ void forward_packet(struct sr_instance *sr,
         return;
   }
 
-  /* struct sr_if *interface = sr_get_interface(sr, rt->interface); */ 
+  struct sr_if *interface = sr_get_interface(sr, rt->interface); 
+   
   struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_header->ip_dst);
   if (entry){
     memcpy(ether_header->ether_shost, interface->addr, ETHER_ADDR_LEN);
 		memcpy(ether_header->ether_dhost, entry->mac, ETHER_ADDR_LEN);
     free(entry);
   } else{
-    struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, ip_header->ip_dst, packet, len, rt->interface);
+    fprintf(stderr,"before quereq");
+    struct sr_arpreq *req = sr_arpcache_queuereq(&sr->cache, ip_header->ip_dst, packet_copy, len, rt->interface);
     handle_arpreq(sr,req);
     return;
   }
-
-
+  
+  fprintf(stderr, "ttl=%d\n", ip_header->ip_ttl);
   ip_header->ip_ttl--;
   ip_header->ip_sum = 0;
   ip_header->ip_sum = cksum(ip_header, sizeof(sr_ip_hdr_t));
-
-  sr_send_packet(sr, packet, len, interface->name);
+  print_hdr_ip((uint8_t*) ip_header);
+  fprintf(stderr, "ttl=%d\n", ip_header->ip_ttl);
+  sr_send_packet(sr, packet_copy, len, interface->name);
+  fprintf(stderr, "ttl=%d\n", ip_header->ip_ttl);
+  free(packet_copy);
 }
