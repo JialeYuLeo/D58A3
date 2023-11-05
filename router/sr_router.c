@@ -37,18 +37,6 @@ void send_arp_reply(
   uint8_t reply_daddr[ETHER_ADDR_LEN],
   const char* interface);
 
-void send_icmp_reply(
-  struct sr_instance* sr,
-  struct sr_if* interface,
-  uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
-  uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
-  uint32_t ip_src,
-  uint32_t ip_dst,
-  uint16_t ip_id,
-  uint16_t ip_len,
-  uint8_t* icmp_payload,
-  icmp_res_type_t icmp_res_type);
-
 void set_icmp_type_and_code(
   sr_icmp_hdr_t* icmp_reply_packet,
   icmp_res_type_t icmp_res_type
