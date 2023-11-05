@@ -306,8 +306,8 @@ void send_icmp_reply(
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
 
   ethernet_header->ether_type = htons(ethertype_ip);
-  memcpy(ethernet_header->ether_dhost, ether_mac_addr_src, ETHER_ADDR_LEN);
-  memcpy(ethernet_header->ether_shost, ether_mac_addr_dst, ETHER_ADDR_LEN);
+  memcpy(ethernet_header->ether_dhost, ether_mac_addr_dst, ETHER_ADDR_LEN);
+  memcpy(ethernet_header->ether_shost, ether_mac_addr_src, ETHER_ADDR_LEN);
 
   /* [Step 2]. Create IP header */
   sr_ip_hdr_t* ip_header = malloc(sizeof(sr_ip_hdr_t));
@@ -346,9 +346,12 @@ void send_icmp_reply(
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t),
     icmp_reply_packet, sizeof(sr_icmp_hdr_t) + icmp_payload_len);
 
+  char* iface = sr_find_longest_prefix(sr, ip_dst)->interface;
   /* [Step 5]. Send the packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, interface->name);
-
+  sr_send_packet(sr, reply_packet, reply_packet_len, iface);
+  print_hdr_eth((uint8_t*)reply_packet);
+  print_hdr_ip((uint8_t*)reply_packet + sizeof(sr_ethernet_hdr_t));
+  print_hdr_icmp((uint8_t*)reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
   fprintf(stderr, "ICMP Reply sent\n");
   fprintf(stderr, "From: ");
   print_addr_ip_int(ntohl(ip_header->ip_src));
