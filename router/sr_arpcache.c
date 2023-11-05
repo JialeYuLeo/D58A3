@@ -31,7 +31,7 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
 
         struct sr_rt* table; /* find_target_interface(...)*/
         table = sr_find_longest_prefix(sr, ip_header->ip_dst);
-        struct sr_if* interface = sr_get_interface(sr,table->interface);
+        struct sr_if* interface = sr_get_interface(sr, table->interface);
         send_icmp_reply(
           sr,
           interface,
@@ -44,17 +44,17 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
           (uint8_t*)(ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t)),
           dest_host_unreachable
         );
-        }
-        sr_arpreq_destroy(&sr->cache, arp_req);
-        return; 
       }
+      sr_arpreq_destroy(&sr->cache, arp_req);
+      return;
     }
-    else {
-      /* TODO: Retry send arp request */
-      send_arp_request(sr,arp_req->ip);
-      arp_req->sent = now;
-      arp_req->times_sent++;
-    }
+  }
+  else {
+    /* TODO: Retry send arp request */
+    send_arp_request(sr, arp_req->ip);
+    arp_req->sent = now;
+    arp_req->times_sent++;
+  }
 }
 /*
   This function gets called every second. For each request sent out, we keep
