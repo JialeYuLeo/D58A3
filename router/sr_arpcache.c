@@ -10,14 +10,61 @@
 #include "sr_router.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 
+void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
+  time_t now = time(NULL);
+  if (difftime(now, arp_req->sent) > 1.0) {
+    if (arp_req->times_sent >= 5) {
+      /* send ICMP host unreachable to source addr of all pkts waiting on this request */
+      struct sr_packet* packet_walker;
+      for (
+        packet_walker = arp_req->packets;
+        packet_walker != NULL;
+        packet_walker = packet_walker->next)
+      {
+        uint8_t* packet = (uint8_t*)arp_req->packets;
+        sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
+        sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+
+        struct sr_if* interface; /*TODO: = find_target_interface(...)*/
+
+        send_icmp_reply(
+          sr,
+          interface,
+          ether_header->ether_dhost,
+          ether_header->ether_shost,
+          ip_header->ip_dst,
+          ip_header->ip_src,
+          ip_header->ip_id,
+          ip_header->ip_len,
+          (uint8_t*)(ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t)),
+          dest_host_unreachable
+        );
+      }
+      sr_arpreq_destroy(&sr->cache, arp_req);
+    }
+    else {
+      /* TODO: Retry send arp request */
+      /* send_arp_request(...)*/
+      arp_req->sent = now;
+      arp_req->times_sent++;
+    }
+  }
+}
 /*
   This function gets called every second. For each request sent out, we keep
   checking whether we should resend an request or destroy the arp request.
   See the comments in the header file for an idea of what it should look like.
 */
 void sr_arpcache_sweepreqs(struct sr_instance* sr) {
-  /* Fill this in */
+  struct sr_arpreq* arp_req_walker = sr->cache.requests;
+  while (arp_req_walker != NULL) {
+    struct sr_arpreq* arp_req_next_temp_store = arp_req_walker->next;
+    handle_arpreq(sr, arp_req_walker);
+    arp_req_walker = arp_req_next_temp_store;
+  }
+  sr_arpreq_destroy(&sr->cache, arp_req_walker);
 }
 
 /* You should not need to touch the rest of this code. */
@@ -245,3 +292,48 @@ void* sr_arpcache_timeout(void* sr_ptr) {
   return NULL;
 }
 
+
+void send_arp_request(struct sr_instance* sr, uint32_t request_dst_ip)
+{
+  uint8_t broadcast_addr[ETHER_ADDR_LEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+  struct sr_if* interface; /* TODO: find interface */
+
+  /* [Step 1]. Create ethernet header */
+  sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
+
+  memcpy(ethernet_header->ether_shost, interface->addr, ETHER_ADDR_LEN);
+  memcpy(ethernet_header->ether_dhost, broadcast_addr, ETHER_ADDR_LEN);
+  ethernet_header->ether_type = htons(ethertype_arp);
+
+  /* [Step 2]. Create ARP header */
+  sr_arp_hdr_t* arp_header = malloc(sizeof(sr_arp_hdr_t));
+  arp_header->ar_hrd = htons(arp_hrd_ethernet);
+  arp_header->ar_pro = htons(ethertype_ip);
+  arp_header->ar_hln = ETHER_ADDR_LEN;
+  arp_header->ar_pln = IP_ADDR_LEN;
+  arp_header->ar_op = htons(arp_op_request);
+  memcpy(arp_header->ar_sha, interface->addr, ETHER_ADDR_LEN);
+  memcpy(arp_header->ar_tha, broadcast_addr, ETHER_ADDR_LEN);
+  arp_header->ar_sip = interface->ip;
+  arp_header->ar_tip = request_dst_ip;
+
+  /* [Step 3]. Wrap into an entire reply packet */
+  int32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t);
+  uint8_t* reply_packet = malloc(reply_packet_len);
+  memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
+  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
+
+  /* [Step 4]. Send the reply packet */
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface->name);
+
+  fprintf(stderr, "ARP Request sent\n");
+  fprintf(stderr, "From: ");
+  print_addr_ip_int(ntohl(arp_header->ar_sip));
+  fprintf(stderr, "To: ");
+  print_addr_ip_int(ntohl(arp_header->ar_tip));
+
+  /* [Step 5]. Free the allocated memory */
+  free(ethernet_header);
+  free(arp_header);
+  free(reply_packet);
+}

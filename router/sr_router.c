@@ -49,6 +49,11 @@ void send_icmp_reply(
   uint8_t* icmp_payload,
   icmp_res_type_t icmp_res_type);
 
+void set_icmp_type_and_code(
+  sr_icmp_hdr_t* icmp_reply_packet,
+  icmp_res_type_t icmp_res_type
+);
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
