@@ -16,7 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #include "sr_if.h"
 #include "sr_rt.h"
 #include "sr_router.h"
@@ -25,10 +24,10 @@
 #include "sr_utils.h"
 
  /*---------------------------------------------------------------------
- *
- * Local function declarations
- *
- *---------------------------------------------------------------------*/
+  *
+  * Local function declarations
+  *
+  *---------------------------------------------------------------------*/
 
 void send_arp_reply(
   struct sr_instance* sr,
@@ -36,8 +35,7 @@ void send_arp_reply(
   uint32_t reply_tip,
   uint8_t reply_saddr[ETHER_ADDR_LEN],
   uint8_t reply_daddr[ETHER_ADDR_LEN],
-  const char* interface
-);
+  const char* interface);
 
 void send_icmp_reply(
   struct sr_instance* sr,
@@ -49,8 +47,7 @@ void send_icmp_reply(
   uint16_t ip_id,
   uint16_t ip_len,
   uint8_t* icmp_payload,
-  icmp_res_type_t icmp_res_type
-);
+  icmp_res_type_t icmp_res_type);
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -98,9 +95,9 @@ void sr_init(struct sr_instance* sr)
 
 void sr_handlepacket(
   struct sr_instance* sr,
-  uint8_t* packet/* lent */,
+  uint8_t* packet /* lent */,
   unsigned int len,
-  char* interface/* lent */)
+  char* interface /* lent */)
 {
   /* REQUIRES */
   assert(sr);
@@ -111,18 +108,24 @@ void sr_handlepacket(
 
   struct sr_if* interface_record = sr_get_interface(sr, interface);
 
-  switch (ethertype(packet)) {
-  case ethertype_arp: /* ARP Protocol */ {
-    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
+  switch (ethertype(packet))
+  {
+  case ethertype_arp: /* ARP Protocol */
+  {
+    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t))
+    {
       printf("** ERROR: The packet has ether_type set to ARP but it's too short to contain an ARP header.\n");
       return;
     }
     sr_arp_hdr_t* arp_header = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
-    switch (ntohs(arp_header->ar_op)) {
-    case arp_op_request: {
+    switch (ntohs(arp_header->ar_op))
+    {
+    case arp_op_request:
+    {
       printf("arp_op_request\n");
-      if (arp_header->ar_tip == interface_record->ip) {
+      if (arp_header->ar_tip == interface_record->ip)
+      {
         /* ARP request received. */
         /* Send ARP Reply */
         send_arp_reply(
@@ -131,14 +134,14 @@ void sr_handlepacket(
           arp_header->ar_sip,
           interface_record->addr,
           arp_header->ar_sha,
-          interface
-        );
+          interface);
       }
       break;
     }
     case arp_op_reply:
       printf("arp_op_reply\n");
-      if (arp_header->ar_tip == interface_record->ip) {
+      if (arp_header->ar_tip == interface_record->ip)
+      {
         /* ARP reply received. */
         /* [Step 1]. Update ARP cache */
         struct sr_arpreq* arp_req = sr_arpcache_insert(
@@ -163,7 +166,8 @@ void sr_handlepacket(
     }
     break;
   }
-  case ethertype_ip: /* IP Protocol */ {
+  case ethertype_ip: /* IP Protocol */
+  {
     printf("ethertype_ip\n");
     sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
     sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
@@ -171,12 +175,16 @@ void sr_handlepacket(
     /* Check the destination */
     for (interface_walker = sr->if_list;
       interface_walker != NULL;
-      interface_walker = interface_walker->next) {
+      interface_walker = interface_walker->next)
+    {
       /* If the packet is sent to this router */
-      if (interface_walker->ip == ip_header->ip_dst) {
+      if (interface_walker->ip == ip_header->ip_dst)
+      {
         icmp_res_type_t icmp_res_type;
-        switch (ip_header->ip_p) {
-        case (ip_protocol_icmp): {
+        switch (ip_header->ip_p)
+        {
+        case (ip_protocol_icmp):
+        {
           icmp_res_type = echo_reply;
           break;
         }
@@ -194,21 +202,21 @@ void sr_handlepacket(
           ip_header->ip_id,
           ip_header->ip_len,
           (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
-          icmp_res_type
-        );
+          icmp_res_type);
         return;
       }
     }
     /* TODO: Forward packet */
     printf("Todo: Forward packet\n");
+
     /* TODO: If unreachable, send_icmp_reply(..., icmp_restype, ...)*/
+
     break;
   }
   default:
     break;
   }
-}/* end sr_ForwardPacket */
-
+} /* end sr_ForwardPacket */
 
 void send_arp_reply(
   struct sr_instance* sr,
@@ -216,8 +224,8 @@ void send_arp_reply(
   uint32_t reply_tip,
   uint8_t reply_saddr[ETHER_ADDR_LEN],
   uint8_t reply_daddr[ETHER_ADDR_LEN],
-  const char* interface
-) {
+  const char* interface)
+{
   /* [Step 1]. Create ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
 
@@ -268,15 +276,14 @@ void send_icmp_reply(
   uint16_t ip_id,
   uint16_t ip_len,
   uint8_t* icmp_payload,
-  icmp_res_type_t icmp_res_type
-) {
+  icmp_res_type_t icmp_res_type)
+{
   /* [Step 1]. Create Ethernet header */
   sr_ethernet_hdr_t* ethernet_header = malloc(sizeof(sr_ethernet_hdr_t));
 
   ethernet_header->ether_type = htons(ethertype_ip);
   memcpy(ethernet_header->ether_dhost, ether_mac_addr_src, ETHER_ADDR_LEN);
   memcpy(ethernet_header->ether_shost, ether_mac_addr_dst, ETHER_ADDR_LEN);
-
 
   /* [Step 2]. Create IP header */
   sr_ip_hdr_t* ip_header = malloc(sizeof(sr_ip_hdr_t));
@@ -307,12 +314,12 @@ void send_icmp_reply(
   icmp_reply_packet->icmp_sum = cksum(icmp_reply_packet, icmp_payload_len);
 
   /* [Step 4]. Wrap the final reply packet */
-  uint32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + \
+  uint32_t reply_packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +
     sizeof(sr_icmp_hdr_t) + icmp_payload_len;
   uint8_t* reply_packet = malloc(reply_packet_len);
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), ip_header, sizeof(sr_ip_hdr_t));
-  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), \
+  memcpy(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t),
     icmp_reply_packet, sizeof(sr_icmp_hdr_t) + icmp_payload_len);
 
   /* [Step 5]. Send the packet */
@@ -327,36 +334,57 @@ void send_icmp_reply(
 
 void set_icmp_type_and_code(
   sr_icmp_hdr_t* icmp_reply_packet,
-  icmp_res_type_t icmp_res_type
-) {
-  switch (icmp_res_type) {
-  case (echo_reply): {
+  icmp_res_type_t icmp_res_type)
+{
+
+  switch (icmp_res_type)
+  {
+  case (echo_reply):
+  {
     icmp_reply_packet->icmp_type = 0;
     icmp_reply_packet->icmp_code = 0;
     break;
   }
-  case (dest_net_unreachable): {
+  case (dest_net_unreachable):
+  {
     icmp_reply_packet->icmp_type = 3;
     icmp_reply_packet->icmp_code = 0;
     break;
   }
-  case (dest_host_unreachable): {
+  case (dest_host_unreachable):
+  {
     icmp_reply_packet->icmp_type = 3;
     icmp_reply_packet->icmp_code = 1;
     break;
   }
-  case (port_unreachable): {
+  case (port_unreachable):
+  {
     icmp_reply_packet->icmp_type = 3;
     icmp_reply_packet->icmp_code = 3;
     break;
   }
-  case (time_exceeded): {
+  case (time_exceeded):
+  {
     icmp_reply_packet->icmp_type = 11;
     icmp_reply_packet->icmp_code = 0;
     break;
   }
-  default: {
+  default:
+  {
     break;
   }
   }
+}
+
+void forward_packet(struct sr_instance* sr,
+  uint8_t* packet /* lent */,
+  unsigned int len)
+{
+
+  /* REQUIRES */
+  assert(sr);
+  assert(packet);
+
+  sr_ethernet_hdr_t* eth_hdr = (sr_ethernet_hdr_t*)buf;
+  sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t));
 }

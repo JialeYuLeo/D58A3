@@ -13,7 +13,6 @@
 #include <string.h>
 #include <unistd.h>
 
-
 #include <sys/socket.h>
 #include <netinet/in.h>
 #define __USE_MISC 1 /* force linux to show inet_aton */
@@ -23,18 +22,38 @@
 #include "sr_router.h"
 
  /*---------------------------------------------------------------------
-  * Method:
+  * Method: find the routing table using longest_prefix_match
   *
   *---------------------------------------------------------------------*/
+struct sr_rt* sr_find_longest_prefix_match(struct sr_instance* sr, uint32_t ip)
+{
+  struct sr_rt* res = null;
+  uint32_t temp = 0;
+  struct sr_rt* rt_walker = sr->routing_table;
+  for (rt_walker; rt_walker != null; rt_walker->next)
+  {
+    if (((rt_walker->mask.s_addr & rt_walker->dest.s_addr) == (rt_walker->mask.s_addr & ip)) && (rt_walker->mask.s_addr > temp))
+    {
+      res = rt_walker;
+      temp = mask;
+    }
+  }
+  return res;
+}
+
+/*---------------------------------------------------------------------
+ * Method:
+ *
+ *---------------------------------------------------------------------*/
 
 int sr_load_rt(struct sr_instance* sr, const char* filename)
 {
   FILE* fp;
-  char  line[BUFSIZ];
-  char  dest[32];
-  char  gw[32];
-  char  mask[32];
-  char  iface[32];
+  char line[BUFSIZ];
+  char dest[32];
+  char gw[32];
+  char mask[32];
+  char iface[32];
   struct in_addr dest_addr;
   struct in_addr gw_addr;
   struct in_addr mask_addr;
@@ -74,7 +93,8 @@ int sr_load_rt(struct sr_instance* sr, const char* filename)
         mask);
       return -1;
     }
-    if (clear_routing_table == 0) {
+    if (clear_routing_table == 0)
+    {
       printf("Loading routing table from server, clear local routing table.\n");
       sr->routing_table = 0;
       clear_routing_table = 1;
@@ -115,7 +135,8 @@ void sr_add_rt_entry(struct sr_instance* sr, struct in_addr dest,
 
   /* -- find the end of the list -- */
   rt_walker = sr->routing_table;
-  while (rt_walker->next) {
+  while (rt_walker->next)
+  {
     rt_walker = rt_walker->next;
   }
 
