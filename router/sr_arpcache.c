@@ -34,17 +34,13 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
         sr_ethernet_hdr_t* ether_header = (sr_ethernet_hdr_t*)packet;
         sr_ip_hdr_t* ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
-        struct sr_rt* table; /* find_target_interface(...)*/
-        table = sr_find_longest_prefix(sr, ip_header->ip_dst);
-        struct sr_if* interface = sr_get_interface(sr, table->interface);
         send_icmp_reply(
           sr,
-          interface,
           ether_header->ether_dhost,
           ether_header->ether_shost,
           ip_header->ip_dst,
           ip_header->ip_src,
-          ip_header->ip_id,
+          htons(ip_header->ip_id) + 1,
           ip_header->ip_len,
           (uint8_t*)(ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t)),
           dest_host_unreachable
@@ -54,7 +50,6 @@ void handle_arpreq(struct sr_instance* sr, struct sr_arpreq* arp_req) {
       return;
     }
     else {
-      /* TODO: Retry send arp request */
       send_arp_request(sr, arp_req->ip);
       arp_req->sent = now;
       arp_req->times_sent++;

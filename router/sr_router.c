@@ -154,7 +154,7 @@ void sr_handlepacket(
           {
 
             fprintf(stderr, "arp_op_reply: interface=%s \n", packet_walker->iface);
-            forward_packet(sr, packet_walker->buf, packet_walker->len);
+            forward_packet(sr, packet_walker->buf, packet_walker->len, interface_record);
             fprintf(stderr, "Queued packet sent. Length: %d\n", packet_walker->len);
           }
           /* [Step 3]. Destroy ARP Request */
@@ -213,29 +213,36 @@ void sr_handlepacket(
             return;
           }
 
-          icmp_res_type = echo_reply;
+          send_icmp_reply(
+            sr,
+            ether_header->ether_dhost,
+            ether_header->ether_shost,
+            ip_header->ip_dst,
+            ip_header->ip_src,
+            htons(ip_header->ip_id) + 1,
+            ip_header->ip_len,
+            (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+            echo_reply);
           break;
         }
         default: /* Assume TCP or UDP protocols */
-          icmp_res_type = port_unreachable;
+          send_icmp_reply(
+            sr,
+            ether_header->ether_dhost,
+            ether_header->ether_shost,
+            ip_header->ip_dst,
+            ip_header->ip_src,
+            htons(ip_header->ip_id) + 1,
+            ip_header->ip_len,
+            (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+            port_unreachable);
           break;
         }
-        send_icmp_reply(
-          sr,
-          interface_walker,
-          ether_header->ether_dhost,
-          ether_header->ether_shost,
-          ip_header->ip_dst,
-          ip_header->ip_src,
-          ip_header->ip_id,
-          ip_header->ip_len,
-          (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
-          icmp_res_type);
         return;
       }
     }
     /* Forward packet */
-    forward_packet(sr, packet, len);
+    forward_packet(sr, packet, len, interface_record);
     return;
   }
   default:
@@ -276,16 +283,15 @@ void send_arp_reply(
   memcpy(reply_packet, ethernet_header, sizeof(sr_ethernet_hdr_t));
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t), arp_header, sizeof(sr_arp_hdr_t));
 
-  char* interface_str = sr_find_longest_prefix(sr, reply_tip)->interface;
   /* [Step 4]. Send the reply packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, interface_str);
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface);
 
   fprintf(stderr, "ARP Reply sent\n");
   fprintf(stderr, "From: ");
   print_addr_ip_int(ntohl(arp_header->ar_sip));
   fprintf(stderr, "To: ");
   print_addr_ip_int(ntohl(arp_header->ar_tip));
-  fprintf(stderr, "Interface: %s ? %s\n", interface_str, interface);
+  fprintf(stderr, "Interface: %s\n", interface);
 
   /* [Step 5]. Free the allocated memory */
   free(ethernet_header);
@@ -295,7 +301,6 @@ void send_arp_reply(
 
 void send_icmp_reply(
   struct sr_instance* sr,
-  struct sr_if* interface,
   uint8_t ether_mac_addr_src[ETHER_ADDR_LEN],
   uint8_t ether_mac_addr_dst[ETHER_ADDR_LEN],
   uint32_t ip_src,
@@ -349,9 +354,11 @@ void send_icmp_reply(
   memcpy(reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t),
     icmp_reply_packet, sizeof(sr_icmp_hdr_t) + icmp_payload_len);
 
-  char* iface = sr_find_longest_prefix(sr, ip_dst)->interface;
   /* [Step 5]. Send the packet */
-  sr_send_packet(sr, reply_packet, reply_packet_len, iface);
+  struct sr_rt* rt = sr_find_longest_prefix(sr, ip_dst);
+  struct sr_if* interface = sr_get_interface(sr, rt->interface);
+  sr_send_packet(sr, reply_packet, reply_packet_len, interface->name);
+
   print_hdr_eth((uint8_t*)reply_packet);
   print_hdr_ip((uint8_t*)reply_packet + sizeof(sr_ethernet_hdr_t));
   print_hdr_icmp((uint8_t*)reply_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
@@ -410,7 +417,8 @@ void set_icmp_type_and_code(
 
 void forward_packet(struct sr_instance* sr,
   uint8_t* packet,
-  unsigned int len)
+  unsigned int len,
+  struct sr_if* curr_interface)
 {
   /* REQUIRES */
   assert(sr);
@@ -427,12 +435,21 @@ void forward_packet(struct sr_instance* sr,
   print_addr_ip_int(ntohl(ip_header->ip_dst));
   print_hdr_eth((u_int8_t*)ether_header);
   print_hdr_ip((u_int8_t*)ip_header);
-  icmp_res_type_t icmp_res_type;
 
   /* [Step2]. Check ttl*/
   if (ip_header->ip_ttl == 1)
   {
-    icmp_res_type = time_exceeded;
+    send_icmp_reply(
+      sr,
+      ether_header->ether_dhost,
+      ether_header->ether_shost,
+      ip_header->ip_dst,
+      ip_header->ip_src,
+      htons(ip_header->ip_id) + 1,
+      ip_header->ip_len,
+      (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
+      time_exceeded);
+    return;
   }
 
   /* [Step3]. Check Routing table*/
@@ -440,20 +457,17 @@ void forward_packet(struct sr_instance* sr,
   rt = sr_find_longest_prefix(sr, ip_header->ip_dst);
 
   if (!rt) {
-    icmp_res_type = dest_net_unreachable;
-    rt = sr_find_longest_prefix(sr, ip_header->ip_src);
-    struct sr_if* interface = sr_get_interface(sr, rt->interface);
+    fprintf(stderr, "Not found in routing table\n");
     send_icmp_reply(
       sr,
-      interface,
-      ether_header->ether_dhost,
+      curr_interface->addr,
       ether_header->ether_shost,
-      ip_header->ip_dst,
+      curr_interface->ip,
       ip_header->ip_src,
-      ip_header->ip_id,
+      htons(ip_header->ip_id) + 1,
       ip_header->ip_len,
       (uint8_t*)ip_header + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t),
-      icmp_res_type);
+      dest_net_unreachable);
     return;
   }
 
